@@ -1,0 +1,10 @@
+node_modules
+dist
+.wrangler
+.baze
+.baze-files
+.dev.vars
+.env
+.env.local
+.env.*
+!.env.example
