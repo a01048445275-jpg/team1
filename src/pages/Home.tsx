@@ -22,8 +22,8 @@ function toMenuItems(restaurants: GoodPriceRestaurant[]): MenuItem[] {
           : "기타") as Category,
         district: r.district,
         address: r.address,
-        lat: 0,
-        lng: 0,
+        lat: r.lat,
+        lng: r.lng,
         goodPrice: true,
         menus: r.menus,
       },
@@ -78,33 +78,57 @@ export default function Home() {
   const list = useMemo(() => {
     const kw = applied.q.trim();
     const source = useApi && status === "success" ? apiMenuItems : (useApi && status === "loading" ? [] : ALL_MENUS);
-    const rows = source.filter(
-      (x) =>
-        x.m.price <= budget &&
-        (district === "전체" || x.r.district === district) &&
-        (!cats.length || cats.includes(x.r.category)) &&
-        (!goodOnly || x.r.goodPrice) &&
-        (!kw || x.m.name.includes(kw) || x.r.name.includes(kw)),
-    ).map((x) => ({ ...x, dist: pos ? distanceKm(pos.lat, pos.lng, x.r.lat, x.r.lng) : undefined }));
+    const rows = source
+      .filter(
+        (x) =>
+          x.m.price <= budget &&
+          (district === "전체" || x.r.district === district) &&
+          (!cats.length || cats.includes(x.r.category)) &&
+          (!goodOnly || x.r.goodPrice) &&
+          (!kw || x.m.name.includes(kw) || x.r.name.includes(kw)),
+      )
+      .map((x) => ({
+        ...x,
+        dist: pos && x.r.lat && x.r.lng ? distanceKm(pos.lat, pos.lng, x.r.lat, x.r.lng) : undefined,
+      }));
 
-    rows.sort((a, b) =>
-      sort === "near" && pos ? (a.dist ?? 0) - (b.dist ?? 0) : sort === "priceDesc" ? b.m.price - a.m.price : a.m.price - b.m.price,
-    );
+    rows.sort((a, b) => {
+      if (sort === "near") {
+        if (a.dist == null && b.dist == null) return 0;
+        if (a.dist == null) return 1;
+        if (b.dist == null) return -1;
+        return a.dist - b.dist;
+      }
+      return sort === "priceDesc" ? b.m.price - a.m.price : a.m.price - b.m.price;
+    });
     return rows;
   }, [budget, district, cats, goodOnly, applied, sort, pos, apiMenuItems, useApi, status]);
 
   const selected = list.find((x) => x.key === sel) ?? list[0];
 
   const locate = () => {
-    if (!navigator.geolocation) return setGeoMsg("이 브라우저는 위치를 지원하지 않아요.");
-    setGeoMsg("위치를 확인하는 중이에요…");
+    if (!navigator.geolocation) {
+      setGeoMsg("이 브라우저는 위치 조회를 지원하지 않아요.");
+      return;
+    }
+    setGeoMsg("현재 내 위치를 확인하는 중이에요…");
     navigator.geolocation.getCurrentPosition(
-      (p) => { setPos({ lat: p.coords.latitude, lng: p.coords.longitude }); setSort("near"); setGeoMsg("내 위치 기준으로 가까운 순이에요."); },
-      () => {
-        setPos({ lat: 37.5662, lng: 126.9779 }); setSort("near");
-        setGeoMsg("위치를 못 받아 서울시청 기준으로 보여드려요.");
+      (p) => {
+        setPos({ lat: p.coords.latitude, lng: p.coords.longitude });
+        setSort("near");
+        setGeoMsg("내 위치 기준으로 가장 가까운 순으로 정렬되었어요.");
       },
-      { timeout: 6000 },
+      (err) => {
+        // 위치 권한 거부 또는 실패 시 서울시청 기준 적용
+        setPos({ lat: 37.5665, lng: 126.9780 });
+        setSort("near");
+        setGeoMsg(
+          err.code === 1
+            ? "위치 권한이 꺼져 있어 서울시청 기준으로 정렬해 드려요."
+            : "위치 확인이 지연되어 서울시청 기준으로 정렬해 드려요.",
+        );
+      },
+      { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 },
     );
   };
   const reset = () => {
@@ -216,8 +240,21 @@ export default function Home() {
           <section>
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-extrabold tracking-tight">예산 안에서 고르는 오늘의 메뉴</h2>
-              <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="bg-transparent text-xs text-[#666] outline-none">
-                <option value="price">가격 낮은 순</option><option value="priceDesc">가격 높은 순</option><option value="near" disabled={!pos}>가까운 순</option>
+              <select
+                value={sort}
+                onChange={(e) => {
+                  const val = e.target.value as Sort;
+                  if (val === "near" && !pos) {
+                    locate();
+                  } else {
+                    setSort(val);
+                  }
+                }}
+                className="bg-transparent text-xs text-[#666] outline-none"
+              >
+                <option value="price">가격 낮은 순</option>
+                <option value="priceDesc">가격 높은 순</option>
+                <option value="near">가까운 순</option>
               </select>
             </div>
             <p className="mt-2 text-xs text-[#888]">서울 {district === "전체" ? "전체" : district} · {budget.toLocaleString()}원 이하 · 메뉴 {list.length}개</p>

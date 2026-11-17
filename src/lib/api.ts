@@ -1,3 +1,5 @@
+import { getCoordinates } from "./geo";
+
 /**
  * 행정안전부 착한가격업소 현황 API (공공데이터포털 / odcloud.kr)
  * endpoint: https://api.odcloud.kr/api/3045247/v1/uddi:0d236000-b33f-41ad-9227-ee0efa3ec6c8
@@ -41,6 +43,8 @@ export interface GoodPriceRestaurant {
   district: string; // 시군
   sido: string;
   address: string;
+  lat: number;
+  lng: number;
   goodPrice: true;
   menus: { name: string; price: number }[];
 }
@@ -78,6 +82,7 @@ function rawToRestaurant(r: RawRecord, idx: number): GoodPriceRestaurant {
     const price = r[`가격${i}` as keyof RawRecord] as number | null;
     if (name && price && price > 0) menus.push({ name: name.trim(), price });
   }
+  const coords = getCoordinates(r.시군, r.주소);
   return {
     id: `api-${idx}`,
     name: r.업소명,
@@ -85,6 +90,8 @@ function rawToRestaurant(r: RawRecord, idx: number): GoodPriceRestaurant {
     district: r.시군,
     sido: r.시도,
     address: r.주소,
+    lat: coords.lat,
+    lng: coords.lng,
     goodPrice: true,
     menus,
   };
