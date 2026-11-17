@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, ChevronDown, LocateFixed, Shuffle, RefreshCw, Wifi, WifiOff } from "lucide-react";
-import { BUDGETS, CATEGORIES, DISTRICTS, distanceKm, won, type Category, type MenuItem } from "../data";
-import { useBudget, useFavs } from "../store";
+import { ALL_MENUS, BUDGETS, CATEGORIES, DISTRICTS, distanceKm, won, type Category, type MenuItem } from "../data";
+import { useBudget, useFavItems } from "../store";
 import MenuCard from "../components/MenuCard";
 import DetailPanel from "../components/DetailPanel";
 import { useApiData } from "../lib/useApiData";
@@ -12,8 +12,8 @@ type Sort = "price" | "priceDesc" | "near";
 /** API GoodPriceRestaurant → MenuItem 변환 */
 function toMenuItems(restaurants: GoodPriceRestaurant[]): MenuItem[] {
   return restaurants.flatMap((r) =>
-    r.menus.map((m, i) => ({
-      key: `${r.id}-${i}`,
+    r.menus.map((m) => ({
+      key: `${r.name}-${m.name}`,
       r: {
         id: 0,
         name: r.name,
@@ -53,7 +53,7 @@ function Bowl() {
 
 export default function Home() {
   const [budget, setBudget] = useBudget();
-  const [favs, setFavs] = useFavs();
+  const [, toggleFav, isFav] = useFavItems();
   const [district, setDistrict] = useState("전체");
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState({ q: "" });
@@ -77,7 +77,7 @@ export default function Home() {
 
   const list = useMemo(() => {
     const kw = applied.q.trim();
-    const source = useApi && status === "success" ? apiMenuItems : [];
+    const source = useApi && status === "success" ? apiMenuItems : (useApi && status === "loading" ? [] : ALL_MENUS);
     const rows = source.filter(
       (x) =>
         x.m.price <= budget &&
@@ -94,7 +94,6 @@ export default function Home() {
   }, [budget, district, cats, goodOnly, applied, sort, pos, apiMenuItems, useApi, status]);
 
   const selected = list.find((x) => x.key === sel) ?? list[0];
-  const toggleFav = (k: string) => setFavs((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
 
   const locate = () => {
     if (!navigator.geolocation) return setGeoMsg("이 브라우저는 위치를 지원하지 않아요.");
@@ -236,7 +235,16 @@ export default function Home() {
             ) : (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 {list.slice(0, limit).map((x) => (
-                  <MenuCard key={x.key} item={x} dist={x.dist} budget={budget} selected={selected?.key === x.key} fav={favs.includes(x.key)} onSelect={() => setSel(x.key)} onFav={() => toggleFav(x.key)} />
+                  <MenuCard
+                    key={x.key}
+                    item={x}
+                    dist={x.dist}
+                    budget={budget}
+                    selected={selected?.key === x.key}
+                    fav={isFav(x.key)}
+                    onSelect={() => setSel(x.key)}
+                    onFav={() => toggleFav(x)}
+                  />
                 ))}
               </div>
             )}
@@ -250,7 +258,12 @@ export default function Home() {
             </div>
           </section>
 
-          <DetailPanel item={selected} budget={budget} fav={selected ? favs.includes(selected.key) : false} onFav={() => selected && toggleFav(selected.key)} />
+          <DetailPanel
+            item={selected}
+            budget={budget}
+            fav={selected ? isFav(selected.key) : false}
+            onFav={() => selected && toggleFav(selected)}
+          />
         </div>
 
         <ol className="mt-8 flex flex-wrap gap-x-8 gap-y-2 text-xs text-[#555]">
